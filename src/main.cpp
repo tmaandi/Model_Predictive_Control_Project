@@ -101,9 +101,9 @@ int main() {
           /* Fit a polynomial to the waypoint x and y coordinates */
           auto coeffs = polyfit(ptx, pty, 3);
           /* Calculate the cross track error */
-          double cte = py - polyeval(coeffs, px);
+          double cte = (py - polyeval(coeffs, px));
           /* Calculate the orientation error */
-          double epsi = psi - atan(coeffs[1] + 2 * coeffs[2] * px + 3 * coeffs[3] * px * px);
+          double epsi = (psi - atan(coeffs[1] + 2 * coeffs[2] * px + 3 * coeffs[3] * px * px));
 
           /* State Vector */
           Eigen::VectorXd state(6);
@@ -166,7 +166,7 @@ int main() {
           //
           // NOTE: REMEMBER TO SET THIS TO 100 MILLISECONDS BEFORE
           // SUBMITTING.
-          this_thread::sleep_for(chrono::milliseconds(100));
+          this_thread::sleep_for(chrono::milliseconds(0));
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
         }
       } else {
