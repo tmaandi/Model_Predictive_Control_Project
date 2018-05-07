@@ -16,4 +16,8 @@ class MPC
   vector<double> Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs);
 };
 
+extern double cte_w;
+extern double psie_w;
+extern double delta_w;
+
 #endif /* MPC_H */

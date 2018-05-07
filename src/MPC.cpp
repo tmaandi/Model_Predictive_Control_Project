@@ -6,14 +6,18 @@
 using CppAD::AD;
 
 /* Set the timestep length and duration */
-size_t N = 100;
-double dt = 0.001;
+size_t N = 10;
+double dt = 0.01;
 
 /* This is the length from front to CoG that has a similar radius. */
 const double Lf = 2.67;
 
 /* Reference Speed */
-double ref_v = 20;
+double ref_v = 40;
+
+double cte_w;
+double psie_w;
+double delta_w;
 
 /*
  * The solver takes all the state variables and actuator
@@ -54,8 +58,8 @@ class FG_eval
       /*
        * Adding error based on reference to the cost
        */
-      fg[0] += CppAD::pow(vars[cte_start + t], 2);
-      fg[0] += CppAD::pow(vars[epsi_start + t], 2);
+      fg[0] += cte_w * CppAD::pow(vars[cte_start + t], 2);
+      fg[0] += psie_w * CppAD::pow(vars[epsi_start + t], 2);
       /*
        * Adding error based on reference velocity to the cost
        */
@@ -67,8 +71,8 @@ class FG_eval
          * Adding to the cost, magnitude of control input per step
          * to penalize large control inputs
          */
-        fg[0] += 50 * CppAD::pow(vars[delta_start + t], 2);
-        fg[0] += 30 * CppAD::pow(vars[a_start + t], 2);
+        fg[0] += delta_w * CppAD::pow(vars[delta_start + t], 2);
+        fg[0] += 5 * CppAD::pow(vars[a_start + t], 2);
 
         if (t < (N - 2))
         {
@@ -251,7 +255,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs)
   options += "Sparse  true        reverse\n";
   // NOTE: Currently the solver has a maximum time limit of 0.5 seconds.
   // Change this as you see fit.
-  options += "Numeric max_cpu_time          5\n";
+  options += "Numeric max_cpu_time          0.5\n";
 
   // place to return solution
   CppAD::ipopt::solve_result<Dvector> solution;

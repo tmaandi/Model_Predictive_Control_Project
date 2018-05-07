@@ -67,8 +67,12 @@ Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals,
   return result;
 }
 
-int main() {
+int main(int argc, const char *argv[]) {
   uWS::Hub h;
+
+ cte_w = stod(argv[1]);
+ psie_w = stod(argv[2]);
+ delta_w = stod(argv[3]);
 
   // MPC is initialized here!
   MPC mpc;
@@ -94,9 +98,27 @@ int main() {
           double psi = j[1]["psi"];
           double v = j[1]["speed"];
 
+          /*
+           * Finding relative diff. and trasforming from
+           * global to vehicle coordinates
+           */
+          for (unsigned int i = 0; i < ptsx.size(); ++i)
+          {
+            double loc_x = ptsx[i] - px;
+            double loc_y = ptsy[i] - py;
+
+            /* Coordinate Transformation */
+            ptsx[i] = loc_x * cos(psi) + loc_y * sin (psi);
+            ptsy[i] =  - loc_x * sin(psi) + loc_y * cos (psi);
+          }
+
+          px = 0;
+          py = 0;
+          psi = 0;
+
+
           Eigen::VectorXd ptx = Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(ptsx.data(), ptsx.size());
           Eigen::VectorXd pty = Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(ptsy.data(), ptsy.size());
-
 
           /* Fit a polynomial to the waypoint x and y coordinates */
           auto coeffs = polyfit(ptx, pty, 3);
@@ -144,9 +166,14 @@ int main() {
 
           // TODO: Transfomr ptsx, ptsy to vehicle coordinates
           //Display the waypoints/reference line
-          vector<double> next_x_vals = {0, 0};
-          vector<double> next_y_vals = {0, 0};
+          vector<double> next_x_vals;
+          vector<double> next_y_vals;
 
+          for (int i = 0; i < 50; ++i)
+          {
+            next_y_vals.push_back(polyeval(coeffs, i));
+            next_x_vals.push_back(i);
+          }
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Yellow line
