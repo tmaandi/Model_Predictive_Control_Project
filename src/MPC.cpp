@@ -7,7 +7,7 @@ using CppAD::AD;
 
 /* Set the timestep length and duration */
 size_t N = 10;
-double dt = 0.01;
+double dt = 0.05;
 
 /* This is the length from front to CoG that has a similar radius. */
 const double Lf = 2.67;
@@ -63,7 +63,7 @@ class FG_eval
       /*
        * Adding error based on reference velocity to the cost
        */
-      fg[0] += 1 * CppAD::pow(vars[v_start + t] - ref_v, 2);
+      fg[0] += 0.2 * CppAD::pow(vars[v_start + t] - ref_v, 2);
 
       if (t < (N - 1))
       {
