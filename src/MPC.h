@@ -20,4 +20,8 @@ extern double cte_w;
 extern double psie_w;
 extern double delta_w;
 
+extern const double Lf;
+
+extern double latency;
+
 #endif /* MPC_H */

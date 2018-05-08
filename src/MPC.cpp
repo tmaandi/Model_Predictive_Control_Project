@@ -9,7 +9,7 @@ using CppAD::AD;
 size_t N = 10;
 double dt = 0.05;
 
-/* This is the length from front to CoG that has a similar radius. */
+/* This is the length from front to CoG of the car in simulator */
 const double Lf = 2.67;
 
 /* Reference Speed */
@@ -18,6 +18,9 @@ double ref_v = 40;
 double cte_w;
 double psie_w;
 double delta_w;
+double latency;
+
+unsigned int latency_steps = (unsigned int)(latency/dt);
 
 /*
  * The solver takes all the state variables and actuator
@@ -50,25 +53,27 @@ class FG_eval
      * Any additions to the cost should be added to `fg[0]`.
      */
      fg[0] = 0;
+
     /*
      * Update Cost
      */
-    for (int t = 0; t < N; ++t)
+    for (unsigned int t = 0; t < N; ++t)
     {
       /*
-       * Adding error based on reference to the cost
+       * Adding weighted error based on reference lane position and
+       * vehicle orientation to the cost
        */
       fg[0] += cte_w * CppAD::pow(vars[cte_start + t], 2);
       fg[0] += psie_w * CppAD::pow(vars[epsi_start + t], 2);
       /*
-       * Adding error based on reference velocity to the cost
+       * Adding weighted error based on reference velocity to the cost
        */
       fg[0] += 0.2 * CppAD::pow(vars[v_start + t] - ref_v, 2);
 
       if (t < (N - 1))
       {
         /*
-         * Adding to the cost, magnitude of control input per step
+         * Adding to the cost, weighted magnitude of control input per step
          * to penalize large control inputs
          */
         fg[0] += delta_w * CppAD::pow(vars[delta_start + t], 2);
@@ -77,7 +82,7 @@ class FG_eval
         if (t < (N - 2))
         {
           /*
-           * Adding to the cost, change in the magnitude of control
+           * Adding to the cost, weighted change in the magnitude of control
            * inputs between two consecutive steps, penalizing the
            * high rate of change of control inputs
            */
@@ -102,7 +107,7 @@ class FG_eval
     fg[1 + cte_start] = vars[cte_start];
     fg[1 + epsi_start] = vars[epsi_start];
 
-    for (int t = 1; t < N; t++)
+    for (unsigned int t = 1; t < N; t++)
     {
       AD<double> x1 = vars[x_start + t];
       AD<double> x0 = vars[x_start + t - 1];
@@ -125,6 +130,22 @@ class FG_eval
       AD<double> delta = vars[delta_start + t - 1];
       AD<double> a = vars[a_start + t - 1];
 
+      /* Considering the actuation delayed due to
+       * latency */
+      if (latency_steps > 0)
+      {
+        if (t > latency_steps)
+        {
+          delta = vars[delta_start + t - 1 - latency_steps];
+          a = vars[a_start + t - 1 - latency_steps];
+        }
+        else
+        {
+          delta = 0;
+          a = 0;
+        }
+      }
+
       /* The idea here is to constraint this value to be 0. */
       fg[1 + x_start + t] = x1 - (x0 + v0 * CppAD::cos(psi0) * dt);
       fg[1 + y_start + t] = y1 - (y0 + v0 * CppAD::sin(psi0) * dt);
@@ -145,7 +166,7 @@ MPC::~MPC() {}
 vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs)
 {
   bool ok = true;
-  size_t i;
+
   typedef CPPAD_TESTVECTOR(double) Dvector;
 
   /*
@@ -161,7 +182,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs)
    * SHOULD BE 0 besides initial state
    */
   Dvector vars(n_vars);
-  for (int i = 0; i < n_vars; i++)
+  for (unsigned int i = 0; i < n_vars; i++)
   {
     vars[i] = 0;
   }
@@ -187,7 +208,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs)
    * Set all non-actuators upper and lowerlimits
    * to the max negative and positive values.
    */
-  for (int i = 0; i < delta_start; i++)
+  for (unsigned int i = 0; i < delta_start; i++)
   {
     vars_lowerbound[i] = -1.0e19;
     vars_upperbound[i] = 1.0e19;
@@ -197,7 +218,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs)
    * The upper and lower limits of delta are set to -25 and 25
    * degrees (values in radians).
    */
-  for (int i = delta_start; i < a_start; i++)
+  for (unsigned int i = delta_start; i < a_start; i++)
   {
     vars_lowerbound[i] = -0.436332;
     vars_upperbound[i] = 0.436332;
@@ -205,7 +226,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs)
   /*
    * Acceleration/decceleration upper and lower limits
    */
-  for (int i = a_start; i < n_vars; i++)
+  for (unsigned int i = a_start; i < n_vars; i++)
   {
     vars_lowerbound[i] = -1.0;
     vars_upperbound[i] = 1.0;
@@ -216,7 +237,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs)
    */
   Dvector constraints_lowerbound(n_constraints);
   Dvector constraints_upperbound(n_constraints);
-  for (int i = 0; i < n_constraints; i++)
+  for (unsigned int i = 0; i < n_constraints; i++)
   {
     constraints_lowerbound[i] = 0;
     constraints_upperbound[i] = 0;
@@ -236,47 +257,44 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs)
   constraints_upperbound[cte_start] = cte;
   constraints_upperbound[epsi_start] = epsi;
 
-  // object that computes objective and constraints
+  /* object that computes objective and constraints */
   FG_eval fg_eval(coeffs);
 
-  //
-  // NOTE: You don't have to worry about these options
-  //
-  // options for IPOPT solver
+  /* options for IPOPT solver */
   std::string options;
-  // Uncomment this if you'd like more print information
+  /* Uncomment this if you'd like more print information */
   options += "Integer print_level  0\n";
-  // NOTE: Setting sparse to true allows the solver to take advantage
-  // of sparse routines, this makes the computation MUCH FASTER. If you
-  // can uncomment 1 of these and see if it makes a difference or not but
-  // if you uncomment both the computation time should go up in orders of
-  // magnitude.
+  /*
+   * NOTE: Setting sparse to true allows the solver to take advantage
+   * of sparse routines, this makes the computation MUCH FASTER. If you
+   * can uncomment 1 of these and see if it makes a difference or not but
+   * if you uncomment both the computation time should go up in orders of
+   * magnitude.
+   */
   options += "Sparse  true        forward\n";
   options += "Sparse  true        reverse\n";
-  // NOTE: Currently the solver has a maximum time limit of 0.5 seconds.
-  // Change this as you see fit.
-  options += "Numeric max_cpu_time          0.5\n";
+  /*
+   * NOTE: Currently the solver has a maximum time limit of 5 seconds.
+   * Change this as you see fit.
+   */
+  options += "Numeric max_cpu_time          5.0\n";
 
-  // place to return solution
+  /* place to return solution */
   CppAD::ipopt::solve_result<Dvector> solution;
 
-  // solve the problem
+  /* solve the optimization problem */
   CppAD::ipopt::solve<Dvector, FG_eval>(
       options, vars, vars_lowerbound, vars_upperbound, constraints_lowerbound,
       constraints_upperbound, fg_eval, solution);
 
-  // Check some of the solution values
+  /* Check some of the solution values */
   ok &= solution.status == CppAD::ipopt::solve_result<Dvector>::success;
 
-  // Cost
+  /* Cost */
   auto cost = solution.obj_value;
   std::cout << "Cost " << cost << std::endl;
 
-  // TODO: Return the first actuator values. The variables can be accessed with
-  // `solution.x[i]`.
-  //
-  // {...} is shorthand for creating a vector, so auto x1 = {1.0,2.0}
-  // creates a 2 element double vector.
+  /* Returning actuator commands and predicted trajectory */
   return {solution.x[delta_start], solution.x[a_start],
           solution.x[x_start + 1],   solution.x[x_start + 2],
           solution.x[x_start + 3],   solution.x[x_start + 4],
